@@ -5,12 +5,12 @@ import { useContainer } from './class-validator-nest-async';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  await useContainer(app);
   app.useGlobalPipes(
     new CustomValidationPipe({
       transform: true,
     }),
   );
+  await useContainer(app);
   await app.listen(3000);
 }
 bootstrap();
