@@ -78,12 +78,31 @@ type ResolvedTransformerToken =
 const TRANSFORM_ENTRIES = Symbol('TRANSFORM_ENTRIES');
 
 class TransformContext implements TransformerResolver {
-  constructor(
-    //
-    public appContext: INestApplicationContext,
-    public appContextId: ContextId | undefined,
-    public resolverToken: Token<TransformerResolver> | undefined,
-  ) {}
+  public appContext: INestApplicationContext;
+  public appContextId: ContextId | undefined;
+  public resolverToken: Token<TransformerResolver> | undefined;
+
+  async _initialize(
+    appContext: INestApplicationContext,
+    appContextId: ContextId | undefined,
+    resolverToken: Token<TransformerResolver> | undefined,
+  ): Promise<void> {
+    if (this.appContext) {
+      throw new Error(
+        'The InjectedTransform mechanism was already initialized.',
+      );
+    }
+
+    this.appContext = appContext;
+    this.appContextId = appContextId;
+    this.resolverToken = resolverToken;
+  }
+
+  _ensureInitialized() {
+    if (!this.appContext) {
+      throw new Error('Async Transform context was not initialized yet.');
+    }
+  }
 
   async getTransformer(
     options: AsyncTransformWithOptions,
@@ -166,9 +185,15 @@ let context: TransformContext;
 
 function getContext(): TransformContext {
   if (!context) {
-    throw new Error('Async Transform context was not initialized yet.');
+    context = new TransformContext();
   }
   return context;
+}
+
+function getInitializedContext(): TransformContext {
+  const ctx = getContext();
+  ctx._ensureInitialized();
+  return ctx;
 }
 
 function resolveToken(token: TransformerToken): ResolvedTransformerToken {
@@ -184,15 +209,7 @@ export async function useContainer(
   _appContext: INestApplicationContext,
   options: UseContainerOptions = {},
 ): Promise<void> {
-  if (context) {
-    throw new Error('The InjectedTransform mechanism was already initialized.');
-  }
-
-  context = new TransformContext(
-    _appContext,
-    options.contextId,
-    options.resolver,
-  );
+  getContext()._initialize(_appContext, options.contextId, options.resolver);
 }
 
 export function AsyncTransform(
@@ -290,7 +307,9 @@ export async function asyncPlainToClass<T, V>(
           options,
         });
       } else if ('token' in decoratorOptions) {
-        const transformer = await getContext().getTransformer(decoratorOptions);
+        const transformer = await getInitializedContext().getTransformer(
+          decoratorOptions,
+        );
         propValue = await transformer.transform({
           value,
           key,
